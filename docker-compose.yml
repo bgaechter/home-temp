@@ -1,0 +1,31 @@
+version: '3'
+services:
+  database:
+    image: "postgres:15"
+    ports:
+      - "5432:5432"
+    env_file:
+      - database.env
+    volumes:
+      - database-data:/var/lib/postgresql/data/
+      - ./db-init-scripts:/docker-entrypoint-initdb.d/
+  backend:
+    image: bgaechter/danfoss-api
+    build:
+      dockerfile: Dockerfile
+    env_file:
+      home-temp.env
+  grafana:
+    image: "grafana/grafana"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-etc:/etc/grafana
+      - grafana-lib:/var/lib/grafana
+      - grafana-share:/usr/share/grafana
+volumes: 
+  database-data:
+  grafana-etc:
+  grafana-lib:
+  grafana-share:
+
