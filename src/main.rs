@@ -1,9 +1,11 @@
 use base64;
 use chrono::Utc;
+use log::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::env;
-use std::time::{Instant, SystemTime};
+use std::thread::sleep;
+use std::time::{Duration, Instant, SystemTime};
 use tokio_postgres::NoTls;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -50,37 +52,24 @@ struct Home {
     postgres_password: String,
     postgres_user: String,
     postgres_host: String,
-    postgres_dbname: String
+    postgres_dbname: String,
+    reqwest_client: reqwest::Client,
 }
 
 impl Home {
     fn new() -> Self {
-        let api_key = match env::var("DANFOSS_API_KEY") {
-            Ok(api_key) => api_key,
-            Err(error) => panic!("No API key provided. {:?}", error),
-        };
+        let api_key = env::var("DANFOSS_API_KEY").expect("No Danfoss API key provided");
 
-        let api_secret = match env::var("DANFOSS_API_SECRET") {
-            Ok(api_secret) => api_secret,
-            Err(error) => panic!("No API secret provided. {:?}", error),
-        };
-        let postgres_password = match env::var("POSTGRES_PASSWORD") {
-            Ok(api_key) => api_key,
-            Err(_) => "postgres".to_string(),
-        };
-        let postgres_user = match env::var("POSTGRES_USER") {
-            Ok(api_key) => api_key,
-            Err(_) => "postgres".to_string(),
-        };
-        let postgres_host = match env::var("POSTGRES_HOST") {
-            Ok(api_key) => api_key,
-            Err(_) => "home-temp-database-1".to_string(),
-        };
+        let api_secret = env::var("DANFOSS_API_SECRET").expect("No Danfoss API secret provided.");
+        let postgres_password =
+            env::var("POSTGRES_PASSWORD").unwrap_or_else(|_| "postgres".to_string());
+        let postgres_user =
+            env::var("POSTGRES_USER").unwrap_or_else(|_| "postgres".to_string());
+        let postgres_host =
+            env::var("POSTGRES_HOST").unwrap_or_else(|_| "home-temp-database-1".to_string());
+        let postgres_dbname =
+            env::var("POSTGRES_DBNAME").unwrap_or_else(|_| "home-temp".to_string());
 
-        let postgres_dbname = match env::var("POSTGRES_DBNAME") {
-            Ok(api_key) => api_key,
-            Err(_) => "home-temp".to_string(),
-        };
 
         Self {
             devices: vec![],
@@ -97,12 +86,20 @@ impl Home {
             postgres_password,
             postgres_dbname,
             postgres_host,
+            reqwest_client: reqwest::Client::new(),
         }
     }
 
     async fn write_to_pg(&self) -> Result<(), Box<dyn std::error::Error>> {
         let (client, connection) = tokio_postgres::connect(
-            format!("host={} user={} password={} dbname={}", self.postgres_host, self.postgres_user, self.postgres_password, self.postgres_dbname).as_str(),
+            format!(
+                "host={} user={} password={} dbname={}",
+                self.postgres_host,
+                self.postgres_user,
+                self.postgres_password,
+                self.postgres_dbname
+            )
+            .as_str(),
             NoTls,
         )
         .await?;
@@ -111,7 +108,7 @@ impl Home {
         // so spawn it off to run on its own.
         tokio::spawn(async move {
             if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
+                error!("connection error: {}", e);
             }
         });
 
@@ -134,18 +131,17 @@ impl Home {
 
     async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         loop {
+            sleep(Duration::new(60, 0));
             if self.time_since_token_renewal.elapsed().as_secs()
                 >= self.token.expires_in.parse::<u64>()?
             {
                 self.get_token().await?;
                 self.time_since_token_renewal = Instant::now();
             }
-            if self.time_since_update.elapsed().as_secs() >= 60 {
-                self.get_devices().await?;
-                self.time_since_update = Instant::now();
-                self.print_room_temperatures();
-                self.write_to_pg().await?;
-            }
+            self.get_devices().await?;
+            self.time_since_update = Instant::now();
+            self.print_room_temperatures();
+            self.write_to_pg().await?;
         }
     }
 
@@ -153,7 +149,7 @@ impl Home {
         for device in &self.devices {
             for status in &device.status {
                 if status.code == "va_temperature" || status.code == "temp_current" {
-                    println!("{}: {}", device.name, status.value);
+                    debug!("{}: {}", device.name, status.value);
                 }
             }
         }
@@ -164,8 +160,8 @@ impl Home {
         let authorization_header: String = format!("Basic {}", basic_auth);
 
         let params = [("grant_type", "client_credentials")];
-        let client = reqwest::Client::new();
-        let res = client
+        let res = self
+            .reqwest_client
             .post("https://api.danfoss.com/oauth2/token")
             .header("content-type", "application/x-www-form-urlencoded")
             .header("accept", "application/json")
@@ -178,8 +174,8 @@ impl Home {
         Ok(())
     }
     async fn get_devices(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let client = reqwest::Client::new();
-        let res = client
+        let res = self
+            .reqwest_client
             .get("https://api.danfoss.com/ally/devices")
             .header("accept", "application/json")
             .header(
@@ -197,6 +193,8 @@ impl Home {
 #[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+    info! {"Starting up"};
     let mut home: Home = Home::new();
     home.run().await?;
     Ok(())
