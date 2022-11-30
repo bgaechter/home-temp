@@ -5,7 +5,8 @@ COPY . .
 
 RUN apt-get update -y &&\
 		apt-get upgrade -y &&\
-		apt-get install -y --no-install-recommends ca-certificates pkg-config gcc libssl-dev libc6-dev
+		sudo dpkg --configure -a &&\
+		apt-get install -y --no-install-recommends apt-utils ca-certificates pkg-config gcc libssl-dev libc6-dev
 
 RUN cargo install --path .
 
