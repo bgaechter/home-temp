@@ -90,7 +90,7 @@ impl Home {
         }
     }
 
-    async fn write_to_pg(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn write_to_pg(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let (client, connection) = tokio_postgres::connect(
             format!(
                 "host={} user={} password={} dbname={}",
@@ -111,7 +111,7 @@ impl Home {
                 error!("connection error: {}", e);
             }
         });
-
+        let update_time: SystemTime = SystemTime::now();
         for device in &self.devices {
             client.execute(
             "INSERT INTO device (active_time, create_time, id, name, online, sub, time_zone, update_time, device_type) VALUES ($1, $2,$3,$4,$5,$6,$7,$8, $9) ON CONFLICT DO NOTHING", // Might want to change the ON CONFLICT to DO UPDATE
@@ -122,7 +122,7 @@ impl Home {
                 let value: &String = &status.value.to_string();
                 client.execute(
                     "INSERT INTO device_status(code, value, device_id, id, update_time) VALUES ($1, $2, $3, $4, $5)",
-                    &[&status.code, &value, &device.id, &id, &SystemTime::now()],
+                    &[&status.code, &value, &device.id, &id, &update_time],
                 ).await?;
             }
         }
@@ -131,7 +131,7 @@ impl Home {
 
     async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         loop {
-            sleep(Duration::new(60, 0));
+            sleep(Duration::new(30, 0));
             if self.time_since_token_renewal.elapsed().as_secs()
                 >= self.token.expires_in.parse::<u64>()?
             {
