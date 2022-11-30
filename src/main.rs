@@ -63,13 +63,11 @@ impl Home {
         let api_secret = env::var("DANFOSS_API_SECRET").expect("No Danfoss API secret provided.");
         let postgres_password =
             env::var("POSTGRES_PASSWORD").unwrap_or_else(|_| "postgres".to_string());
-        let postgres_user =
-            env::var("POSTGRES_USER").unwrap_or_else(|_| "postgres".to_string());
+        let postgres_user = env::var("POSTGRES_USER").unwrap_or_else(|_| "postgres".to_string());
         let postgres_host =
             env::var("POSTGRES_HOST").unwrap_or_else(|_| "home-temp-database-1".to_string());
         let postgres_dbname =
             env::var("POSTGRES_DBNAME").unwrap_or_else(|_| "home-temp".to_string());
-
 
         Self {
             devices: vec![],
@@ -135,13 +133,17 @@ impl Home {
             if self.time_since_token_renewal.elapsed().as_secs()
                 >= self.token.expires_in.parse::<u64>()?
             {
-                self.get_token().await?;
+                self.get_token()
+                    .await
+                    .unwrap_or_else(|e| error!("Could not fetch token. {:?}", e));
                 self.time_since_token_renewal = Instant::now();
             }
-            self.get_devices().await?;
+            self.get_devices()
+                .await
+                .unwrap_or_else(|e| error!("Could not get devices. {:?}", e));
             self.time_since_update = Instant::now();
             self.print_room_temperatures();
-            self.write_to_pg().await?;
+            self.write_to_pg().await.unwrap_or_else(|e| error!("Could not write to database. {:?}", e));
         }
     }
 
