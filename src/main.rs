@@ -143,7 +143,9 @@ impl Home {
                 .unwrap_or_else(|e| error!("Could not get devices. {:?}", e));
             self.time_since_update = Instant::now();
             self.print_room_temperatures();
-            self.write_to_pg().await.unwrap_or_else(|e| error!("Could not write to database. {:?}", e));
+            self.write_to_pg()
+                .await
+                .unwrap_or_else(|e| error!("Could not write to database. {:?}", e));
         }
     }
 
