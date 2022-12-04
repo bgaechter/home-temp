@@ -1,14 +1,12 @@
-FROM rust:1-slim
+FROM rust:1-alpine
 
 WORKDIR /usr/src/myapp
 COPY . .
-
-RUN apt-get clean -y &&\
-		apt-get update -y &&\
-		apt-get upgrade -y &&\
-		dpkg --configure -a &&\
-		apt-get --fix-broken install && \
-		apt-get install -y --no-install-recommends apt-utils ca-certificates pkg-config gcc libssl-dev libc6-dev
+RUN apk add --no-cache \
+        ca-certificates \
+        gcc \
+		openssl-dev \
+		musl-dev
 
 RUN cargo install --path .
 
