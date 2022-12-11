@@ -6,8 +6,7 @@ RUN apk add --no-cache \
         ca-certificates \
         gcc \
 		openssl-dev \
-		musl-dev
-
-RUN cargo install --path .
+		musl-dev &&\
+        cargo install --path . 
 
 CMD ["home-temp"]
